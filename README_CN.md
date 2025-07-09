@@ -1,6 +1,6 @@
-# MCP Server for WinDBG Crash Analysis
+# MCP WinDBG Server
 
-用于使用 WinDBG/CDB 分析 Windows 崩溃转储的 Model Context Protocol 服务器。
+MCP WinDBG Server 是一个基于 Model Context Protocol (MCP) 的服务器，它允许 AI 模型通过 WinDBG/CDB 分析 Windows 崩溃转储文件。该服务器提供了两种运行模式：本地模式（通过标准输入/输出通信）和远程模式（通过 WebSocket 通信）。
 
 ## 概述
 
@@ -34,53 +34,63 @@
 - 自动修复所有问题的神奇解决方案。
 - 具有自定义 AI 的全功能产品。相反，它是一个**围绕 CDB 的简单 Python 包装器**，**依赖于 LLM 的 WinDBG 专业知识**，最好与您自己的领域知识相结合。
 
-## 博客
+## 功能特点
 
-我在博客中写了整个旅程。
+- 分析 Windows 崩溃转储文件
+- 执行 WinDBG/CDB 命令
+- 列出可用的崩溃转储文件
+- 支持本地和远程操作模式
+- 远程模式支持文件上传功能
 
-- [崩溃分析的未来：AI 遇见 WinDBG](https://svnscha.de/posts/ai-meets-windbg/)
+## 安装
+
+```bash
+pip install mcp-windbg
+```
 
 ## 先决条件
 
-- Python 3.10 或更高版本
+- Python 3.7 或更高版本
 - 安装了**Windows 调试工具**的 Windows 操作系统。
   - 这是 [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) 的一部分。
 - 支持 Model Context Protocol 的 LLM。
-    - 我已通过 GitHub Copilot 测试了 Claude 3.7 Sonnet，对结果非常满意。
+  - 已通过 GitHub Copilot 测试了 Claude 3.7 Sonnet，对结果非常满意。
   - 对于 GitHub Copilot，需要启用 Chat 功能中的 Model Context Protocol。
   - 参见 [使用 Model Context Protocol (MCP) 扩展 Copilot Chat](https://docs.github.com/en/copilot/customizing-copilot/extending-copilot-chat-with-mcp)。
 
-## 开发设置
-
-1. 克隆仓库：
-
-```bash
-git clone https://github.com/svnscha/mcp-windbg.git
-cd mcp-windbg
-```
-
-2. 创建并激活虚拟环境：
-
-```bash
-python -m venv .venv
-.\.venv\Scripts\activate
-```
-
-3. 以开发模式安装包：
-
-```bash
-pip install -e .
-```
-
-4. 安装测试依赖：
-
-```bash
-pip install -e ".[test]"
-```
-
 ## 使用方法
 
-### 与 VS Code 集成
+### 本地模式（默认）
+
+本地模式通过标准输入/输出与 MCP 客户端通信，适用于直接集成到支持 MCP 的应用程序中。
+
+```bash
+mcp-windbg
+```
+
+### 远程模式
+
+远程模式启动一个 WebSocket 服务器，允许通过网络连接访问 WinDBG 功能。这种模式还包括一个文件上传服务器，方便上传崩溃转储文件。
+
+```bash
+mcp-windbg --mode remote --host 0.0.0.0 --port 8765 --upload-port 8766 --upload-dir ./uploads
+```
+
+### 命令行选项
+
+```
+--cdb-path PATH       自定义 cdb.exe 路径
+--symbols-path PATH   自定义符号路径
+--timeout SECONDS     命令超时时间（秒），默认为 30
+--verbose             启用详细输出
+--mode {local,remote} 服务器模式：local（标准输入/输出）或 remote（WebSocket），默认为 local
+--host HOST           远程服务器主机，默认为 0.0.0.0
+--port PORT           WebSocket 服务器端口，默认为 8765
+--upload-port PORT    文件上传服务器端口，默认为 8766
+--upload-dir DIR      上传文件保存目录，默认为 ./uploads
+```
+
+## 与 VS Code 集成
 
 要将此 MCP 服务器与 Visual Studio Code 集成：
 
@@ -111,58 +121,103 @@ pip install -e ".[test]"
 
 ![Visual Studio Code 集成](./images/vscode-integration.png)
 
-### 启动 MCP 服务器（可选）
+## 示例客户端
 
-如果通过 Copilot 集成，则不需要这个。IDE 将自动启动 MCP。
+项目包含两个示例客户端，用于演示如何与远程模式的 MCP WinDBG 服务器交互：
 
-使用模块命令启动服务器：
+### Python WebSocket 客户端
+
+`examples/websocket_client.py` 是一个命令行 Python 客户端，可以连接到远程 MCP WinDBG 服务器并执行各种操作。
 
 ```bash
-python -m mcp_server_windbg
+# 列出可用工具
+python examples/websocket_client.py --list-tools
+
+# 列出可用的崩溃转储文件
+python examples/websocket_client.py --list-dumps
+
+# 上传崩溃转储文件
+python examples/websocket_client.py --upload-file path/to/crash.dmp
+
+# 分析崩溃转储文件
+python examples/websocket_client.py --dump path/to/crash.dmp
+
+# 在崩溃转储上执行特定命令
+python examples/websocket_client.py --dump path/to/crash.dmp --command "!analyze -v"
 ```
 
-### 命令行选项
+### Web 客户端
+
+`examples/web_client.html` 是一个基于浏览器的客户端，提供了图形界面来与远程 MCP WinDBG 服务器交互。
+
+要使用 Web 客户端：
+1. 启动 MCP WinDBG 服务器的远程模式
+2. 在浏览器中打开 `examples/web_client.html` 文件
+3. 输入服务器 URL 并连接
+4. 使用界面执行各种操作
+
+## 工具说明
+
+MCP WinDBG 服务器提供以下工具：
+
+### open_windbg_dump
+
+分析 Windows 崩溃转储文件，执行常见的 WinDBG 命令并返回结果。
+
+参数：
+- `dump_path`：崩溃转储文件路径
+- `include_stack_trace`：是否包含堆栈跟踪（可选，默认为 false）
+- `include_modules`：是否包含已加载模块列表（可选，默认为 false）
+- `include_threads`：是否包含线程信息（可选，默认为 false）
+
+### run_windbg_cmd
+
+在已加载的崩溃转储上执行特定的 WinDBG 命令。
+
+参数：
+- `dump_path`：崩溃转储文件路径
+- `command`：要执行的 WinDBG 命令
+
+### close_windbg_dump
+
+卸载崩溃转储并释放资源。
+
+参数：
+- `dump_path`：要卸载的崩溃转储文件路径
+
+### list_windbg_dumps
+
+列出指定目录中的 Windows 崩溃转储文件。
+
+参数：
+- `directory`：要搜索的目录路径（可选，默认为系统崩溃转储目录）
+
+## 开发设置
+
+1. 克隆仓库：
 
 ```bash
-python -m mcp_server_windbg [options]
+git clone https://github.com/yourusername/mcp-windbg.git
+cd mcp-windbg
 ```
 
-可用选项：
-
-- `--cdb-path CDB_PATH`：cdb.exe 的自定义路径
-- `--symbols-path SYMBOLS_PATH`：自定义符号路径
-- `--timeout TIMEOUT`：命令超时时间（秒）（默认：30）
-- `--verbose`：启用详细输出
-
-2. 根据需要自定义配置：
-   - 如有需要，调整 Python 解释器路径
-   - 通过在 `args` 数组中添加 `"--cdb-path": "C:\\path\\to\\cdb.exe"` 来设置 CDB 的自定义路径
-   - 如上所示设置符号路径环境变量，或将 `"--symbols-path"` 添加到参数中
-
-### 与 Copilot 集成
-
-一旦在 VS Code 中配置了服务器：
-
-1. 在 Copilot 设置中启用 Chat 功能中的 MCP
-2. MCP 服务器将出现在 Copilot 的可用工具中
-3. WinDBG 分析功能将通过 Copilot 的界面访问
-4. 您现在可以通过 Copilot 使用自然语言查询直接分析崩溃转储
-
-## 工具
-
-此服务器提供以下工具：
-
-- `open_windbg_dump`：使用常见的 WinDBG 命令分析 Windows 崩溃转储文件
-- `run_windbg_cmd`：在加载的崩溃转储上执行特定的 WinDBG 命令
-- `list_windbg_dumps`：列出指定目录中的 Windows 崩溃转储（.dmp）文件
-- `close_windbg_dump`：卸载崩溃转储并释放资源
-
-## 运行测试
-
-要运行测试：
+2. 创建并激活虚拟环境：
 
 ```bash
-pytest
+python -m venv .venv
+.\.venv\Scripts\activate
+```
+
+3. 以开发模式安装包：
+
+```bash
+pip install -e .
+```
+
+4. 安装测试依赖：
+
+```bash
+pip install -e ".[test]"
 ```
 
 ## 故障排除

@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP WinDBG Web客户端</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #0078d7;
+            margin-top: 0;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #0078d7;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        button {
+            background-color: #0078d7;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #005a9e;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            white-space: pre-wrap;
+            font-family: Consolas, monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .status {
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        .status.connected {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .status.disconnected {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .checkbox-group {
+            margin-top: 10px;
+        }
+        .checkbox-group label {
+            display: inline-block;
+            margin-right: 15px;
+            font-weight: normal;
+        }
+        .checkbox-group input {
+            margin-right: 5px;
+        }
+        .tool-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .tool-list li {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .tool-list li:last-child {
+            border-bottom: none;
+        }
+        .tool-name {
+            font-weight: bold;
+            color: #0078d7;
+        }
+        .tool-description {
+            margin-top: 5px;
+            color: #555;
+        }
+        .file-upload {
+            margin-top: 15px;
+        }
+        .progress {
+            margin-top: 10px;
+            height: 20px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            overflow: hidden;
+            display: none;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #0078d7;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .dump-list {
+            list-style-type: none;
+            padding: 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .dump-list li {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .dump-list li:hover {
+            background-color: #f0f0f0;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 15px;
+        }
+        .tab {
+            padding: 10px 15px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-bottom: none;
+            margin-bottom: -1px;
+        }
+        .tab.active {
+            background-color: #fff;
+            border-color: #ddd;
+            border-bottom-color: #fff;
+            font-weight: bold;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MCP WinDBG Web客户端</h1>
+        
+        <div class="section">
+            <h2>连接设置</h2>
+            <div class="form-group">
+                <label for="serverUrl">WebSocket服务器URL:</label>
+                <input type="text" id="serverUrl" value="ws://localhost:8765">
+            </div>
+            <div class="form-group">
+                <label for="uploadUrl">文件上传服务器URL:</label>
+                <input type="text" id="uploadUrl" value="http://localhost:8766/upload">
+            </div>
+            <button id="connectBtn">连接</button>
+            <button id="disconnectBtn" disabled>断开连接</button>
+            <div id="connectionStatus" class="status disconnected">未连接</div>
+        </div>
+        
+        <div class="section">
+            <h2>工具列表</h2>
+            <button id="listToolsBtn" disabled>获取工具列表</button>
+            <div id="toolListResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <div class="section">
+            <h2>崩溃转储分析</h2>
+            
+            <div class="tabs">
+                <div class="tab active" data-tab="listDumps">列出崩溃转储</div>
+                <div class="tab" data-tab="analyzeDump">分析崩溃转储</div>
+                <div class="tab" data-tab="runCommand">执行命令</div>
+                <div class="tab" data-tab="uploadDump">上传崩溃转储</div>
+            </div>
+            
+            <div id="listDumpsTab" class="tab-content active">
+                <div class="form-group">
+                    <label for="dumpsDirectory">目录路径 (可选):</label>
+                    <input type="text" id="dumpsDirectory" placeholder="留空使用默认目录">
+                </div>
+                <button id="listDumpsBtn" disabled>列出崩溃转储</button>
+                <div id="dumpListResult" class="result" style="display: none;"></div>
+                <ul id="dumpList" class="dump-list"></ul>
+            </div>
+            
+            <div id="analyzeDumpTab" class="tab-content">
+                <div class="form-group">
+                    <label for="dumpPath">崩溃转储文件路径:</label>
+                    <input type="text" id="dumpPath">
+                </div>
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" id="includeStackTrace" checked> 包含堆栈跟踪
+                    </label>
+                    <label>
+                        <input type="checkbox" id="includeModules" checked> 包含模块列表
+                    </label>
+                    <label>
+                        <input type="checkbox" id="includeThreads" checked> 包含线程信息
+                    </label>
+                </div>
+                <button id="analyzeDumpBtn" disabled>分析崩溃转储</button>
+                <div id="analyzeResult" class="result" style="display: none;"></div>
+            </div>
+            
+            <div id="runCommandTab" class="tab-content">
+                <div class="form-group">
+                    <label for="cmdDumpPath">崩溃转储文件路径:</label>
+                    <input type="text" id="cmdDumpPath">
+                </div>
+                <div class="form-group">
+                    <label for="windbgCommand">WinDBG命令:</label>
+                    <input type="text" id="windbgCommand" placeholder="例如: !analyze -v">
+                </div>
+                <button id="runCommandBtn" disabled>执行命令</button>
+                <div id="commandResult" class="result" style="display: none;"></div>
+            </div>
+            
+            <div id="uploadDumpTab" class="tab-content">
+                <div class="form-group">
+                    <label for="fileUpload">选择文件:</label>
+                    <input type="file" id="fileUpload">
+                </div>
+                <button id="uploadFileBtn" disabled>上传文件</button>
+                <div class="progress">
+                    <div class="progress-bar"></div>
+                </div>
+                <div id="uploadResult" class="result" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let websocket = null;
+        let selectedDumpPath = '';
+        
+        // DOM元素
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const serverUrlInput = document.getElementById('serverUrl');
+        const uploadUrlInput = document.getElementById('uploadUrl');
+        
+        const listToolsBtn = document.getElementById('listToolsBtn');
+        const toolListResult = document.getElementById('toolListResult');
+        
+        const listDumpsBtn = document.getElementById('listDumpsBtn');
+        const dumpsDirectoryInput = document.getElementById('dumpsDirectory');
+        const dumpListResult = document.getElementById('dumpListResult');
+        const dumpList = document.getElementById('dumpList');
+        
+        const analyzeDumpBtn = document.getElementById('analyzeDumpBtn');
+        const dumpPathInput = document.getElementById('dumpPath');
+        const includeStackTraceCheckbox = document.getElementById('includeStackTrace');
+        const includeModulesCheckbox = document.getElementById('includeModules');
+        const includeThreadsCheckbox = document.getElementById('includeThreads');
+        const analyzeResult = document.getElementById('analyzeResult');
+        
+        const runCommandBtn = document.getElementById('runCommandBtn');
+        const cmdDumpPathInput = document.getElementById('cmdDumpPath');
+        const windbgCommandInput = document.getElementById('windbgCommand');
+        const commandResult = document.getElementById('commandResult');
+        
+        const uploadFileBtn = document.getElementById('uploadFileBtn');
+        const fileUploadInput = document.getElementById('fileUpload');
+        const progressBar = document.querySelector('.progress-bar');
+        const progress = document.querySelector('.progress');
+        const uploadResult = document.getElementById('uploadResult');
+        
+        // 标签页切换
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(c => c.classList.remove('active'));
+                
+                tab.classList.add('active');
+                const tabId = tab.getAttribute('data-tab');
+                document.getElementById(`${tabId}Tab`).classList.add('active');
+            });
+        });
+        
+        // 连接WebSocket
+        connectBtn.addEventListener('click', () => {
+            const serverUrl = serverUrlInput.value.trim();
+            if (!serverUrl) {
+                alert('请输入WebSocket服务器URL');
+                return;
+            }
+            
+            try {
+                websocket = new WebSocket(serverUrl);
+                
+                websocket.onopen = () => {
+                    connectionStatus.textContent = '已连接';
+                    connectionStatus.className = 'status connected';
+                    
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    listToolsBtn.disabled = false;
+                    listDumpsBtn.disabled = false;
+                    analyzeDumpBtn.disabled = false;
+                    runCommandBtn.disabled = false;
+                    uploadFileBtn.disabled = false;
+                };
+                
+                websocket.onclose = () => {
+                    connectionStatus.textContent = '已断开连接';
+                    connectionStatus.className = 'status disconnected';
+                    
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    listToolsBtn.disabled = true;
+                    listDumpsBtn.disabled = true;
+                    analyzeDumpBtn.disabled = true;
+                    runCommandBtn.disabled = true;
+                    uploadFileBtn.disabled = true;
+                    
+                    websocket = null;
+                };
+                
+                websocket.onerror = (error) => {
+                    console.error('WebSocket错误:', error);
+                    connectionStatus.textContent = `连接错误: ${error.message || '未知错误'}`;
+                    connectionStatus.className = 'status disconnected';
+                };
+                
+                websocket.onmessage = (event) => {
+                    handleWebSocketMessage(event.data);
+                };
+                
+            } catch (error) {
+                alert(`连接错误: ${error.message}`);
+            }
+        });
+        
+        // 断开WebSocket连接
+        disconnectBtn.addEventListener('click', () => {
+            if (websocket) {
+                websocket.close();
+            }
+        });
+        
+        // 获取工具列表
+        listToolsBtn.addEventListener('click', () => {
+            if (!websocket) {
+                alert('未连接到服务器');
+                return;
+            }
+            
+            const request = {
+                jsonrpc: '2.0',
+                method: 'list_tools',
+                params: {},
+                id: generateRequestId()
+            };
+            
+            websocket.send(JSON.stringify(request));
+        });
+        
+        // 列出崩溃转储
+        listDumpsBtn.addEventListener('click', () => {
+            if (!websocket) {
+                alert('未连接到服务器');
+                return;
+            }
+            
+            const directory = dumpsDirectoryInput.value.trim();
+            
+            const request = {
+                jsonrpc: '2.0',
+                method: 'call_tool',
+                params: {
+                    name: 'list_windbg_dumps',
+                    arguments: {
+                        directory: directory || null
+                    }
+                },
+                id: generateRequestId()
+            };
+            
+            websocket.send(JSON.stringify(request));
+        });
+        
+        // 分析崩溃转储
+        analyzeDumpBtn.addEventListener('click', () => {
+            if (!websocket) {
+                alert('未连接到服务器');
+                return;
+            }
+            
+            const dumpPath = dumpPathInput.value.trim();
+            if (!dumpPath) {
+                alert('请输入崩溃转储文件路径');
+                return;
+            }
+            
+            const request = {
+                jsonrpc: '2.0',
+                method: 'call_tool',
+                params: {
+                    name: 'open_windbg_dump',
+                    arguments: {
+                        dump_path: dumpPath,
+                        include_stack_trace: includeStackTraceCheckbox.checked,
+                        include_modules: includeModulesCheckbox.checked,
+                        include_threads: includeThreadsCheckbox.checked
+                    }
+                },
+                id: generateRequestId()
+            };
+            
+            analyzeResult.style.display = 'none';
+            analyzeResult.textContent = '正在分析...';
+            analyzeResult.style.display = 'block';
+            
+            websocket.send(JSON.stringify(request));
+        });
+        
+        // 执行WinDBG命令
+        runCommandBtn.addEventListener('click', () => {
+            if (!websocket) {
+                alert('未连接到服务器');
+                return;
+            }
+            
+            const dumpPath = cmdDumpPathInput.value.trim();
+            if (!dumpPath) {
+                alert('请输入崩溃转储文件路径');
+                return;
+            }
+            
+            const command = windbgCommandInput.value.trim();
+            if (!command) {
+                alert('请输入WinDBG命令');
+                return;
+            }
+            
+            const request = {
+                jsonrpc: '2.0',
+                method: 'call_tool',
+                params: {
+                    name: 'run_windbg_cmd',
+                    arguments: {
+                        dump_path: dumpPath,
+                        command: command
+                    }
+                },
+                id: generateRequestId()
+            };
+            
+            commandResult.style.display = 'none';
+            commandResult.textContent = '正在执行...';
+            commandResult.style.display = 'block';
+            
+            websocket.send(JSON.stringify(request));
+        });
+        
+        // 上传文件
+        uploadFileBtn.addEventListener('click', () => {
+            const uploadUrl = uploadUrlInput.value.trim();
+            if (!uploadUrl) {
+                alert('请输入文件上传服务器URL');
+                return;
+            }
+            
+            const fileInput = fileUploadInput;
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('请选择要上传的文件');
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // 显示进度条
+            progress.style.display = 'block';
+            progressBar.style.width = '0%';
+            
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', uploadUrl, true);
+            
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressBar.style.width = percentComplete + '%';
+                }
+            };
+            
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        uploadResult.textContent = JSON.stringify(response, null, 2);
+                        uploadResult.style.display = 'block';
+                        
+                        if (response.success) {
+                            // 如果上传成功，自动填充文件路径到分析表单
+                            dumpPathInput.value = response.file_path;
+                            cmdDumpPathInput.value = response.file_path;
+                            
+                            // 切换到分析标签页
+                            tabs.forEach(t => t.classList.remove('active'));
+                            tabContents.forEach(c => c.classList.remove('active'));
+                            
+                            document.querySelector('[data-tab="analyzeDump"]').classList.add('active');
+                            document.getElementById('analyzeDumpTab').classList.add('active');
+                        }
+                    } catch (e) {
+                        uploadResult.textContent = '解析响应失败: ' + e.message;
+                        uploadResult.style.display = 'block';
+                    }
+                } else {
+                    uploadResult.textContent = '上传失败: ' + xhr.statusText;
+                    uploadResult.style.display = 'block';
+                }
+                
+                // 隐藏进度条
+                setTimeout(() => {
+                    progress.style.display = 'none';
+                }, 1000);
+            };
+            
+            xhr.onerror = function() {
+                uploadResult.textContent = '上传错误，请检查网络连接';
+                uploadResult.style.display = 'block';
+                progress.style.display = 'none';
+            };
+            
+            xhr.send(formData);
+        });
+        
+        // 处理WebSocket消息
+        function handleWebSocketMessage(data) {
+            try {
+                const response = JSON.parse(data);
+                
+                if (response.error) {
+                    console.error('RPC错误:', response.error);
+                    alert(`错误: ${response.error.message || '未知错误'}`);
+                    return;
+                }
+                
+                if (!response.result) {
+                    console.warn('无效响应:', response);
+                    return;
+                }
+                
+                // 处理工具列表响应
+                if (response.result.tools) {
+                    displayToolList(response.result.tools);
+                    return;
+                }
+                
+                // 处理工具调用响应
+                if (response.result.content && response.result.content.length > 0) {
+                    const content = response.result.content[0];
+                    
+                    // 根据响应内容判断是哪个工具的响应
+                    if (content.text && content.text.includes('Found') && content.text.includes('crash dump')) {
+                        // 列出崩溃转储的响应
+                        displayDumpList(content.text);
+                    } else if (content.text && content.text.includes('Crash Analysis')) {
+                        // 分析崩溃转储的响应
+                        analyzeResult.innerHTML = convertToHtml(content.text);
+                        analyzeResult.style.display = 'block';
+                    } else if (content.text && content.text.includes('Command:')) {
+                        // 执行命令的响应
+                        commandResult.innerHTML = convertToHtml(content.text);
+                        commandResult.style.display = 'block';
+                    } else {
+                        // 其他响应
+                        console.log('未分类的响应:', content);
+                    }
+                }
+                
+            } catch (error) {
+                console.error('处理WebSocket消息错误:', error);
+                alert(`处理响应错误: ${error.message}`);
+            }
+        }
+        
+        // 显示工具列表
+        function displayToolList(tools) {
+            let html = '<ul class="tool-list">';
+            
+            tools.forEach(tool => {
+                html += `
+                    <li>
+                        <div class="tool-name">${tool.name}</div>
+                        <div class="tool-description">${tool.description}</div>
+                    </li>
+                `;
+            });
+            
+            html += '</ul>';
+            
+            toolListResult.innerHTML = html;
+            toolListResult.style.display = 'block';
+        }
+        
+        // 显示崩溃转储列表
+        function displayDumpList(text) {
+            dumpListResult.textContent = text;
+            dumpListResult.style.display = 'block';
+            
+            // 解析文本中的崩溃转储路径
+            const lines = text.split('\n');
+            const dumpFiles = [];
+            
+            lines.forEach(line => {
+                // 匹配形如 "1. C:\path\to\dump.dmp (123.45 MB, modified: 2023-01-01 12:34:56)" 的行
+                const match = line.match(/\d+\.\s+(.+\.dmp)\s+\(/i);
+                if (match) {
+                    dumpFiles.push(match[1]);
+                }
+            });
+            
+            // 更新崩溃转储列表
+            dumpList.innerHTML = '';
+            
+            dumpFiles.forEach(dumpFile => {
+                const li = document.createElement('li');
+                li.textContent = dumpFile;
+                li.addEventListener('click', () => {
+                    // 点击时填充路径到分析表单
+                    dumpPathInput.value = dumpFile;
+                    cmdDumpPathInput.value = dumpFile;
+                    
+                    // 高亮选中的项
+                    dumpList.querySelectorAll('li').forEach(item => {
+                        item.style.backgroundColor = '';
+                        item.style.fontWeight = 'normal';
+                    });
+                    li.style.backgroundColor = '#e6f7ff';
+                    li.style.fontWeight = 'bold';
+                    
+                    // 保存选中的路径
+                    selectedDumpPath = dumpFile;
+                });
+                dumpList.appendChild(li);
+            });
+        }
+        
+        // 将Markdown格式的文本转换为HTML
+        function convertToHtml(text) {
+            // 简单的Markdown转HTML
+            // 处理代码块
+            text = text.replace(/### (.*?)\n```\n([\s\S]*?)\n```/g, '<h3>$1</h3><pre><code>$2</code></pre>');
+            
+            // 处理标题
+            text = text.replace(/### (.*?)(\n|$)/g, '<h3>$1</h3>');
+            
+            return text;
+        }
+        
+        // 生成请求ID
+        function generateRequestId() {
+            return 'req_' + Math.random().toString(36).substr(2, 9);
+        }
+    </script>
+</body>
+</html>
