@@ -21,6 +21,7 @@ from .server import (
     ListWindbgDumpsParams
 )
 from .websocket_server import start_websocket_server
+from .sse_server import SSEServer
 from .file_upload import start_upload_server
 
 class ServerFactory:
@@ -57,9 +58,11 @@ class ServerFactory:
         cdb_path: Optional[str] = None,
         symbols_path: Optional[str] = None,
         timeout: int = 30,
-        verbose: bool = False
+        verbose: bool = False,
+        use_sse: bool = False,
+        sse_port: int = 8767
     ) -> None:
-        """Create a remote WebSocket-based MCP server with file upload capability.
+        """Create a remote MCP server with file upload capability.
         
         Args:
             host: Host to bind the server to
@@ -70,6 +73,8 @@ class ServerFactory:
             symbols_path: Optional custom symbols path
             timeout: Command timeout in seconds
             verbose: Whether to enable verbose output
+            use_sse: Whether to use SSE instead of WebSocket
+            sse_port: Port for the SSE server (if use_sse is True)
         """
         # 创建MCP服务器实例
         server = Server("mcp-windbg")
@@ -264,9 +269,14 @@ class ServerFactory:
             upload_dir=upload_dir
         )
         
-        # 启动WebSocket服务器
-        await start_websocket_server(
-            server_instance=server,
-            host=host,
-            port=port
-        )
+        # 启动WebSocket或SSE服务器
+        if use_sse:
+            sse_server, runner = await SSEServer.create(server, host, sse_port)
+            print(f"SSE server started at http://{host}:{sse_port}")
+        else:
+            await start_websocket_server(
+                server_instance=server,
+                host=host,
+                port=port
+            )
+            print(f"WebSocket server started at ws://{host}:{port}")

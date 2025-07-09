@@ -65,7 +65,20 @@ def parse_args() -> argparse.Namespace:
         "--mode",
         choices=["local", "remote"],
         default="local",
-        help="服务器模式：local（标准输入/输出）或 remote（WebSocket）（默认：local）"
+        help="服务器模式：local（标准输入/输出）或 remote（WebSocket/SSE）（默认：local）"
+    )
+    
+    # SSE服务器选项
+    parser.add_argument(
+        "--use-sse",
+        action="store_true",
+        help="在远程模式下使用SSE而不是WebSocket"
+    )
+    parser.add_argument(
+        "--sse-port",
+        type=int,
+        default=8767,
+        help="SSE服务器端口（默认：8767）"
     )
     
     # 远程模式选项
@@ -130,7 +143,9 @@ async def main_async() -> None:
             cdb_path=args.cdb_path,
             symbols_path=symbols_path,
             timeout=args.timeout,
-            verbose=args.verbose
+            verbose=args.verbose,
+            use_sse=args.use_sse,
+            sse_port=args.sse_port
         )
 
 

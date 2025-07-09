@@ -1,5 +1,6 @@
 from .server import serve
 from .server_factory import ServerFactory
+from .sse_server import SSEServer
 
 def main():
     """MCP WinDBG Server - Windows crash dump analysis functionality for MCP"""

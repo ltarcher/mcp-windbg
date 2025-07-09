@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WinDbg MCP SSE 客户端</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .panel {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            background-color: #f9f9f9;
+        }
+        .output {
+            height: 400px;
+            overflow-y: auto;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            padding: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            margin-bottom: 10px;
+        }
+        .input-group {
+            display: flex;
+            margin-bottom: 10px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .status {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .status.connected {
+            color: green;
+        }
+        .status.disconnected {
+            color: red;
+        }
+        .tools {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .tools button {
+            background-color: #2196F3;
+        }
+        .tools button:hover {
+            background-color: #0b7dda;
+        }
+        .message {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .message.request {
+            color: #0066cc;
+        }
+        .message.response {
+            color: #009900;
+        }
+        .message.error {
+            color: #cc0000;
+        }
+    </style>
+</head>
+<body>
+    <h1>WinDbg MCP SSE 客户端</h1>
+    
+    <div class="status disconnected" id="status">未连接</div>
+    
+    <div class="container">
+        <div class="panel">
+            <h2>调试器控制</h2>
+            <div class="input-group">
+                <input type="text" id="serverUrl" value="http://localhost:8767/events" placeholder="SSE 服务器 URL">
+                <button id="connectBtn">连接</button>
+                <button id="disconnectBtn" disabled>断开</button>
+            </div>
+            
+            <div class="tools">
+                <button class="tool-btn" data-tool="list_tools">列出工具</button>
+                <button class="tool-btn" data-tool="list_resources">列出资源</button>
+                <button class="tool-btn" data-tool="get_process_list">进程列表</button>
+                <button class="tool-btn" data-tool="get_module_list">模块列表</button>
+                <button class="tool-btn" data-tool="get_thread_list">线程列表</button>
+            </div>
+            
+            <h3>命令输入</h3>
+            <div class="input-group">
+                <input type="text" id="commandInput" placeholder="输入调试命令...">
+                <button id="sendBtn" disabled>发送</button>
+            </div>
+            
+            <h3>工具调用</h3>
+            <div class="input-group">
+                <input type="text" id="toolName" placeholder="工具名称">
+                <button id="callToolBtn" disabled>调用工具</button>
+            </div>
+            <div class="input-group">
+                <textarea id="toolArgs" rows="5" style="width: 100%; font-family: monospace;" placeholder='{"参数1": "值1", "参数2": "值2"}'></textarea>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>消息日志</h2>
+            <button id="clearBtn">清除日志</button>
+            <div class="output" id="output"></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const statusEl = document.getElementById('status');
+            const outputEl = document.getElementById('output');
+            const serverUrlEl = document.getElementById('serverUrl');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const sendBtn = document.getElementById('sendBtn');
+            const commandInputEl = document.getElementById('commandInput');
+            const clearBtn = document.getElementById('clearBtn');
+            const toolNameEl = document.getElementById('toolName');
+            const toolArgsEl = document.getElementById('toolArgs');
+            const callToolBtn = document.getElementById('callToolBtn');
+            
+            let eventSource = null;
+            let requestId = 1;
+            
+            // 连接到SSE服务器
+            connectBtn.addEventListener('click', function() {
+                const serverUrl = serverUrlEl.value.trim();
+                if (!serverUrl) {
+                    addMessage('请输入有效的服务器URL', 'error');
+                    return;
+                }
+                
+                try {
+                    eventSource = new EventSource(serverUrl);
+                    
+                    eventSource.onopen = function() {
+                        statusEl.textContent = '已连接';
+                        statusEl.className = 'status connected';
+                        connectBtn.disabled = true;
+                        disconnectBtn.disabled = false;
+                        sendBtn.disabled = false;
+                        callToolBtn.disabled = false;
+                        addMessage('已连接到SSE服务器', 'system');
+                    };
+                    
+                    eventSource.onmessage = function(event) {
+                        try {
+                            const data = JSON.parse(event.data);
+                            addMessage(`收到响应: ${JSON.stringify(data, null, 2)}`, 'response');
+                        } catch (e) {
+                            addMessage(`收到消息: ${event.data}`, 'response');
+                        }
+                    };
+                    
+                    eventSource.onerror = function(error) {
+                        addMessage('SSE连接错误', 'error');
+                        disconnectEventSource();
+                    };
+                    
+                } catch (error) {
+                    addMessage(`连接错误: ${error.message}`, 'error');
+                }
+            });
+            
+            // 断开SSE连接
+            disconnectBtn.addEventListener('click', function() {
+                disconnectEventSource();
+            });
+            
+            // 发送调试命令
+            sendBtn.addEventListener('click', function() {
+                const command = commandInputEl.value.trim();
+                if (!command) return;
+                
+                sendCommand(command);
+                commandInputEl.value = '';
+            });
+            
+            // 回车键发送命令
+            commandInputEl.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendBtn.click();
+                }
+            });
+            
+            // 调用工具按钮
+            callToolBtn.addEventListener('click', function() {
+                const toolName = toolNameEl.value.trim();
+                if (!toolName) {
+                    addMessage('请输入工具名称', 'error');
+                    return;
+                }
+                
+                let args = {};
+                try {
+                    const argsText = toolArgsEl.value.trim();
+                    if (argsText) {
+                        args = JSON.parse(argsText);
+                    }
+                } catch (e) {
+                    addMessage(`参数JSON解析错误: ${e.message}`, 'error');
+                    return;
+                }
+                
+                callTool(toolName, args);
+            });
+            
+            // 清除日志
+            clearBtn.addEventListener('click', function() {
+                outputEl.innerHTML = '';
+            });
+            
+            // 工具快捷按钮
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const toolName = this.getAttribute('data-tool');
+                    callTool(toolName, {});
+                });
+            });
+            
+            // 发送调试命令
+            function sendCommand(command) {
+                if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                    addMessage('未连接到服务器', 'error');
+                    return;
+                }
+                
+                const id = requestId++;
+                const request = {
+                    jsonrpc: '2.0',
+                    method: 'execute_command',
+                    params: {
+                        command: command
+                    },
+                    id: id
+                };
+                
+                sendRequest(request);
+            }
+            
+            // 调用工具
+            function callTool(toolName, args) {
+                if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                    addMessage('未连接到服务器', 'error');
+                    return;
+                }
+                
+                const id = requestId++;
+                const request = {
+                    jsonrpc: '2.0',
+                    method: 'call_tool',
+                    params: {
+                        name: toolName,
+                        arguments: args
+                    },
+                    id: id
+                };
+                
+                sendRequest(request);
+            }
+            
+            // 发送请求
+            function sendRequest(request) {
+                const xhr = new XMLHttpRequest();
+                const serverUrl = serverUrlEl.value.trim().replace('/events', '/request');
+                
+                xhr.open('POST', serverUrl, true);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            addMessage(`请求已发送: ${JSON.stringify(request)}`, 'request');
+                        } else {
+                            addMessage(`请求发送失败: ${xhr.status} ${xhr.statusText}`, 'error');
+                        }
+                    }
+                };
+                
+                xhr.send(JSON.stringify(request));
+            }
+            
+            // 断开连接
+            function disconnectEventSource() {
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+                
+                statusEl.textContent = '已断开连接';
+                statusEl.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                sendBtn.disabled = true;
+                callToolBtn.disabled = true;
+                addMessage('已断开SSE连接', 'system');
+            }
+            
+            // 添加消息到输出区域
+            function addMessage(message, type) {
+                const messageEl = document.createElement('div');
+                messageEl.className = `message ${type}`;
+                messageEl.textContent = message;
+                outputEl.appendChild(messageEl);
+                outputEl.scrollTop = outputEl.scrollHeight;
+            }
+        });
+    </script>
+</body>
+</html>
