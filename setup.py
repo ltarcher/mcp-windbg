@@ -25,6 +25,9 @@ setup(
     ],
     package_dir={"": "src"},
     packages=find_packages(where="src"),
+    package_data={
+        "mcp_server_windbg": ["static/*"],
+    },
     python_requires=">=3.7",
     install_requires=[
         "mcp>=0.1.0",

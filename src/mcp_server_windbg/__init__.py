@@ -23,6 +23,8 @@ def main():
     parser.add_argument("--port", type=int, default=8765, help="Port for WebSocket server")
     parser.add_argument("--upload-port", type=int, default=8766, help="Port for file upload server")
     parser.add_argument("--upload-dir", default="./uploads", help="Directory for uploaded files")
+    parser.add_argument("--use-sse", action="store_true", help="Enable SSE server for browser-based client")
+    parser.add_argument("--sse-port", type=int, default=8767, help="Port for SSE server")
 
     args = parser.parse_args()
     
@@ -47,7 +49,9 @@ def main():
             cdb_path=args.cdb_path,
             symbols_path=args.symbols_path,
             timeout=args.timeout,
-            verbose=args.verbose
+            verbose=args.verbose,
+            use_sse=args.use_sse,
+            sse_port=args.sse_port
         ))
 
 
