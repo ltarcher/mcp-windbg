@@ -13,10 +13,10 @@ import pathlib
 from aiohttp import web
 from aiohttp.web import Request, Response, Application, AppRunner, TCPSite
 
-from modelcontextprotocol.server import Server
-from modelcontextprotocol.types import (
-    JsonRpcRequest, JsonRpcResponse, JsonRpcError,
-    ErrorCode
+from mcp.server import Server
+from mcp.types import (
+    JSONRPCRequest, JSONRPCResponse, JSONRPCError,
+    INVALID_PARAMS, INTERNAL_ERROR
 )
 
 # 配置日志
@@ -239,7 +239,7 @@ class SSEServer:
         
         try:
             # 创建JSON-RPC请求对象
-            request = JsonRpcRequest(
+            request = JSONRPCRequest(
                 jsonrpc="2.0",
                 method=method,
                 params=params,
@@ -257,10 +257,10 @@ class SSEServer:
                 response = await self.mcp_server.handle_list_resources(request)
             else:
                 # 未知方法
-                response = JsonRpcResponse(
+                response = JSONRPCResponse(
                     jsonrpc="2.0",
-                    error=JsonRpcError(
-                        code=ErrorCode.MethodNotFound,
+                    error=JSONRPCError(
+                        code=INVALID_PARAMS,
                         message=f"未知方法: {method}"
                     ),
                     id=request_id
